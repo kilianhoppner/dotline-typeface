@@ -195,21 +195,45 @@ function getCornerIndices(path) {
 
 function getLinePathData(x1, y1, x2, y2, thickness) {
   const r = Math.max(1, Math.round(thickness / 2));
-  const ang = Math.atan2(y2 - y1, x2 - x1);
-  const ux = Math.cos(ang);
-  const uy = Math.sin(ang);
-  // Tiny overlap to avoid hairline cracks between segment bodies and round joins.
-  const overlap = Math.max(1, Math.round(thickness * 0.02));
+  const dxLine = x2 - x1;
+  const dyLine = y2 - y1;
+  const isDiagonal45 = Math.abs(dxLine) === Math.abs(dyLine) && dxLine !== 0;
+
+  // Overlap helps avoid seams between adjacent segment bodies.
+  // In inverted mode keep only a tiny overlap: enough to close center slicing,
+  // but small enough to avoid the visible diagonal hitch.
+  let overlap = drawMode === DRAW_MODE_INVERTED ? 0.35 : Math.max(1, Math.round(thickness * 0.02));
+  let ux;
+  let uy;
+  let nx;
+  let ny;
+
+  if (isDiagonal45) {
+    // Use exact normalized vectors for 45-degree segments to prevent per-segment
+    // trig rounding drift that causes 1-3px misalignment in diagonal rectangles.
+    ux = Math.sign(dxLine) / Math.SQRT2;
+    uy = Math.sign(dyLine) / Math.SQRT2;
+    nx = -uy;
+    ny = ux;
+  } else {
+    const ang = Math.atan2(dyLine, dxLine);
+    ux = Math.cos(ang);
+    uy = Math.sin(ang);
+    nx = Math.sin(ang);
+    ny = -Math.cos(ang);
+  }
+
   const sx = x1 - ux * overlap;
   const sy = y1 - uy * overlap;
   const ex = x2 + ux * overlap;
   const ey = y2 + uy * overlap;
-  const dx = Math.sin(ang) * r;
-  const dy = -Math.cos(ang) * r;
-  const x1a = Math.round(sx + dx), y1a = Math.round(sy + dy);
-  const x1b = Math.round(sx - dx), y1b = Math.round(sy - dy);
-  const x2b = Math.round(ex - dx), y2b = Math.round(ey - dy);
-  const x2a = Math.round(ex + dx), y2a = Math.round(ey + dy);
+
+  const offX = nx * r;
+  const offY = ny * r;
+  const x1a = Math.round(sx + offX), y1a = Math.round(sy + offY);
+  const x1b = Math.round(sx - offX), y1b = Math.round(sy - offY);
+  const x2b = Math.round(ex - offX), y2b = Math.round(ey - offY);
+  const x2a = Math.round(ex + offX), y2a = Math.round(ey + offY);
   return `M${x1a} ${y1a} L${x1b} ${y1b} L${x2b} ${y2b} L${x2a} ${y2a} Z `;
 }
 
