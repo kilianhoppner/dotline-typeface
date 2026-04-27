@@ -199,7 +199,7 @@ function getCornerIndices(path) {
 // --- PRECISION EXPORT ---
 
 function getLinePathData(x1, y1, x2, y2, thickness) {
-  const r = Math.max(1, Math.round(thickness / 2));
+  const r = thickness / 2;
   const dxLine = x2 - x1;
   const dyLine = y2 - y1;
   const isDiagonal45 = Math.abs(dxLine) === Math.abs(dyLine) && dxLine !== 0;
@@ -208,9 +208,6 @@ function getLinePathData(x1, y1, x2, y2, thickness) {
   // In inverted mode keep only a tiny overlap: enough to close center slicing,
   // but small enough to avoid the visible diagonal hitch.
   let overlap = drawMode === DRAW_MODE_INVERTED ? 0.35 : Math.max(1, Math.round(thickness * 0.02));
-  // Diagonal joins are most sensitive in vector editors; keep only a micro-overlap
-  // so tangency to circular nodes stays visually aligned.
-  if (isDiagonal45) overlap = Math.min(overlap, 0.08);
   let ux;
   let uy;
   let nx;
@@ -235,20 +232,21 @@ function getLinePathData(x1, y1, x2, y2, thickness) {
   const sy = y1 - uy * overlap;
   const ex = x2 + ux * overlap;
   const ey = y2 + uy * overlap;
-
   const offX = nx * r;
   const offY = ny * r;
-  const x1a = Math.round(sx + offX), y1a = Math.round(sy + offY);
-  const x1b = Math.round(sx - offX), y1b = Math.round(sy - offY);
-  const x2b = Math.round(ex - offX), y2b = Math.round(ey - offY);
-  const x2a = Math.round(ex + offX), y2a = Math.round(ey + offY);
+  const q = (v) => Number(v.toFixed(6));
+  let x1a = q(sx + offX), y1a = q(sy + offY);
+  let x1b = q(sx - offX), y1b = q(sy - offY);
+  let x2b = q(ex - offX), y2b = q(ey - offY);
+  let x2a = q(ex + offX), y2a = q(ey + offY);
   return `M${x1a} ${y1a} L${x1b} ${y1b} L${x2b} ${y2b} L${x2a} ${y2a} Z `;
 }
 
 function getCirclePathData(cx, cy, r) {
-  const x = Math.round(cx);
-  const y = Math.round(cy);
-  const radius = Math.max(1, Math.round(r));
+  const q = (v) => Number(v.toFixed(6));
+  const x = q(cx);
+  const y = q(cy);
+  const radius = q(Math.max(0.5, r));
   return `M${x - radius} ${y} A${radius} ${radius} 0 1 0 ${x + radius} ${y} A${radius} ${radius} 0 1 0 ${x - radius} ${y} Z `;
 }
 
@@ -268,33 +266,33 @@ async function exportToSVG() {
   // by ~1px while the viewBox is still 0..800, so apps report a non-square bbox.
   const PADDING = (SCALE * cornerDotDiameter()) / 2;
 
-  const tx = (v) => Math.round((v - minX) * SCALE + PADDING);
-  const ty = (v) => Math.round((v - minY) * SCALE + PADDING);
-  const ts = (v) => Math.round(v * SCALE);
+  const tx = (v) => (v - minX) * SCALE + PADDING;
+  const ty = (v) => (v - minY) * SCALE + PADDING;
+  const ts = (v) => v * SCALE;
 
-  let ink = "", holes = "";
-  const thick = Math.max(1, ts(lineThickness()));
-  const cornerRadius = Math.max(1, Math.round(thick / 2));
-  const normalCornerRadius = Math.max(1, Math.round(ts(cornerDotDiameter() / 2)));
+  let inkPaths = [], holePaths = [];
+  const thick = Math.max(0.5, ts(lineThickness()));
+  const cornerRadius = thick / 2;
+  const normalCornerRadius = ts(cornerDotDiameter() / 2);
   const pathNodeRadius = drawMode === DRAW_MODE_NORMAL ? normalCornerRadius : cornerRadius;
-  const invertedHoleRadius = Math.max(1, Math.round(ts(gridDotDiameter() / 2)));
+  const invertedHoleRadius = ts(gridDotDiameter() / 2);
 
   if (drawMode === DRAW_MODE_INVERTED) {
     fullPaths.forEach(path => {
       if (path.length === 1) {
         const p = points[path[0]];
-        ink += getCirclePathData(tx(p.x), ty(p.y), cornerRadius);
+        inkPaths.push(getCirclePathData(tx(p.x), ty(p.y), cornerRadius));
         return;
       }
       let corners = getCornerIndices(path);
       for (let i = 0; i < path.length - 1; i++) {
         let a = points[path[i]], b = points[path[i+1]];
-        ink += getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick);
+        inkPaths.push(getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick));
         if (corners.has(path[i])) {
-          ink += getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius);
+          inkPaths.push(getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius));
         }
         if (corners.has(path[i+1])) {
-          ink += getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius);
+          inkPaths.push(getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius));
         }
       }
     });
@@ -303,12 +301,12 @@ async function exportToSVG() {
       let corners = getCornerIndices(path);
       for (let i = 0; i < path.length - 1; i++) {
         let a = points[path[i]], b = points[path[i+1]];
-        ink += getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick);
+        inkPaths.push(getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick));
         if (corners.has(path[i])) {
-          ink += getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius);
+          inkPaths.push(getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius));
         }
         if (corners.has(path[i+1])) {
-          ink += getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius);
+          inkPaths.push(getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius));
         }
       }
     });
@@ -318,16 +316,20 @@ async function exportToSVG() {
     let allC = new Set();
     fullPaths.forEach(p => getCornerIndices(p).forEach(c => allC.add(c)));
     allC.forEach(i => {
-      holes += getCirclePathData(tx(points[i].x), ty(points[i].y), invertedHoleRadius);
+      holePaths.push(getCirclePathData(tx(points[i].x), ty(points[i].y), invertedHoleRadius));
     });
   }
 
   // The final bounds will be exactly 800x800
   const finalDim = targetTotalSize;
+  const inkMarkup = inkPaths.map(d => `<path d="${d}" fill="black" fill-rule="nonzero" />`).join("");
+  const holesMarkup = holePaths.map(d => `<path d="${d}" fill="red" fill-rule="nonzero" />`).join("");
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalDim}px" height="${finalDim}px" viewBox="0 0 ${finalDim} ${finalDim}">
-    <path d="${ink}" fill="black" />
-    <path d="${holes}" fill="red" />
+    ${inkMarkup}
+    <g id="holes">
+      ${holesMarkup}
+    </g>
   </svg>`;
 
   const blob = new Blob([svg], { type: "image/svg+xml" });
