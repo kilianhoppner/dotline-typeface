@@ -138,6 +138,11 @@ function drawGrid() {
 function drawConnections() {
   stroke(0); strokeCap(ROUND); strokeJoin(ROUND); strokeWeight(lineThickness());
   for (let conn of connections) line(points[conn[0]].x, points[conn[0]].y, points[conn[1]].x, points[conn[1]].y);
+  if (drawMode === DRAW_MODE_INVERTED) {
+    for (let path of fullPaths) {
+      if (path.length === 1) point(points[path[0]].x, points[path[0]].y);
+    }
+  }
 }
 
 
@@ -203,6 +208,9 @@ function getLinePathData(x1, y1, x2, y2, thickness) {
   // In inverted mode keep only a tiny overlap: enough to close center slicing,
   // but small enough to avoid the visible diagonal hitch.
   let overlap = drawMode === DRAW_MODE_INVERTED ? 0.35 : Math.max(1, Math.round(thickness * 0.02));
+  // Diagonal joins are most sensitive in vector editors; keep only a micro-overlap
+  // so tangency to circular nodes stays visually aligned.
+  if (isDiagonal45) overlap = Math.min(overlap, 0.08);
   let ux;
   let uy;
   let nx;
@@ -267,17 +275,44 @@ async function exportToSVG() {
   let ink = "", holes = "";
   const thick = Math.max(1, ts(lineThickness()));
   const cornerRadius = Math.max(1, Math.round(thick / 2));
+  const normalCornerRadius = Math.max(1, Math.round(ts(cornerDotDiameter() / 2)));
+  const pathNodeRadius = drawMode === DRAW_MODE_NORMAL ? normalCornerRadius : cornerRadius;
   const invertedHoleRadius = Math.max(1, Math.round(ts(gridDotDiameter() / 2)));
 
-  fullPaths.forEach(path => {
-    let corners = getCornerIndices(path);
-    for (let i = 0; i < path.length - 1; i++) {
-      let a = points[path[i]], b = points[path[i+1]];
-      ink += getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick);
-      if (corners.has(path[i])) ink += getCirclePathData(tx(a.x), ty(a.y), cornerRadius);
-      if (corners.has(path[i+1])) ink += getCirclePathData(tx(b.x), ty(b.y), cornerRadius);
-    }
-  });
+  if (drawMode === DRAW_MODE_INVERTED) {
+    fullPaths.forEach(path => {
+      if (path.length === 1) {
+        const p = points[path[0]];
+        ink += getCirclePathData(tx(p.x), ty(p.y), cornerRadius);
+        return;
+      }
+      let corners = getCornerIndices(path);
+      for (let i = 0; i < path.length - 1; i++) {
+        let a = points[path[i]], b = points[path[i+1]];
+        ink += getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick);
+        if (corners.has(path[i])) {
+          ink += getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius);
+        }
+        if (corners.has(path[i+1])) {
+          ink += getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius);
+        }
+      }
+    });
+  } else {
+    fullPaths.forEach(path => {
+      let corners = getCornerIndices(path);
+      for (let i = 0; i < path.length - 1; i++) {
+        let a = points[path[i]], b = points[path[i+1]];
+        ink += getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick);
+        if (corners.has(path[i])) {
+          ink += getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius);
+        }
+        if (corners.has(path[i+1])) {
+          ink += getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius);
+        }
+      }
+    });
+  }
 
   if (drawMode === DRAW_MODE_INVERTED) {
     let allC = new Set();
@@ -298,6 +333,6 @@ async function exportToSVG() {
   const blob = new Blob([svg], { type: "image/svg+xml" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = url; link.download = `glyph_perfect_800.svg`; link.click();
+  link.href = url; link.download = `glyph.svg`; link.click();
   URL.revokeObjectURL(url);
 }
