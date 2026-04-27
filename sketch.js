@@ -196,6 +196,17 @@ function getCornerIndices(path) {
   return c;
 }
 
+function getCornerPath(path) {
+  if (path.length <= 2) return path.slice();
+  const cp = [path[0]];
+  for (let i = 1; i < path.length - 1; i++) {
+    let p = points[path[i-1]], m = points[path[i]], n = points[path[i+1]];
+    if ((n.col - m.col) !== (m.col - p.col) || (n.row - m.row) !== (m.row - p.row)) cp.push(path[i]);
+  }
+  cp.push(path[path.length - 1]);
+  return cp;
+}
+
 // --- PRECISION EXPORT ---
 
 function getLinePathData(x1, y1, x2, y2, thickness) {
@@ -208,6 +219,7 @@ function getLinePathData(x1, y1, x2, y2, thickness) {
   // In inverted mode keep only a tiny overlap: enough to close center slicing,
   // but small enough to avoid the visible diagonal hitch.
   let overlap = drawMode === DRAW_MODE_INVERTED ? 0.35 : Math.max(1, Math.round(thickness * 0.02));
+  if (isDiagonal45) overlap = Math.min(overlap, 0.02);
   let ux;
   let uy;
   let nx;
@@ -228,13 +240,27 @@ function getLinePathData(x1, y1, x2, y2, thickness) {
     ny = -Math.cos(ang);
   }
 
-  const sx = x1 - ux * overlap;
-  const sy = y1 - uy * overlap;
-  const ex = x2 + ux * overlap;
-  const ey = y2 + uy * overlap;
+  let sx = x1 - ux * overlap;
+  let sy = y1 - uy * overlap;
+  let ex = x2 + ux * overlap;
+  let ey = y2 + uy * overlap;
+
+  if (isDiagonal45) {
+    // Keep diagonal centerline anchored to the exact transformed node centers.
+    // This avoids tiny run recomputation drift that can create micro-kinks.
+    const sgnX = Math.sign(dxLine);
+    const sgnY = Math.sign(dyLine);
+    sx = x1 - sgnX * overlap;
+    sy = y1 - sgnY * overlap;
+    ex = x2 + sgnX * overlap;
+    ey = y2 + sgnY * overlap;
+  }
   const offX = nx * r;
   const offY = ny * r;
-  const q = (v) => Number(v.toFixed(6));
+  const q = (v) => {
+    const n = Number(v.toFixed(8));
+    return Math.abs(n) < 1e-8 ? 0 : n;
+  };
   let x1a = q(sx + offX), y1a = q(sy + offY);
   let x1b = q(sx - offX), y1b = q(sy - offY);
   let x2b = q(ex - offX), y2b = q(ey - offY);
@@ -243,7 +269,10 @@ function getLinePathData(x1, y1, x2, y2, thickness) {
 }
 
 function getCirclePathData(cx, cy, r) {
-  const q = (v) => Number(v.toFixed(6));
+  const q = (v) => {
+    const n = Number(v.toFixed(8));
+    return Math.abs(n) < 1e-8 ? 0 : n;
+  };
   const x = q(cx);
   const y = q(cy);
   const radius = q(Math.max(0.5, r));
@@ -285,13 +314,14 @@ async function exportToSVG() {
         return;
       }
       let corners = getCornerIndices(path);
-      for (let i = 0; i < path.length - 1; i++) {
-        let a = points[path[i]], b = points[path[i+1]];
+      let cornerPath = getCornerPath(path);
+      for (let i = 0; i < cornerPath.length - 1; i++) {
+        let a = points[cornerPath[i]], b = points[cornerPath[i+1]];
         inkPaths.push(getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick));
-        if (corners.has(path[i])) {
+        if (corners.has(cornerPath[i])) {
           inkPaths.push(getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius));
         }
-        if (corners.has(path[i+1])) {
+        if (corners.has(cornerPath[i+1])) {
           inkPaths.push(getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius));
         }
       }
@@ -299,13 +329,14 @@ async function exportToSVG() {
   } else {
     fullPaths.forEach(path => {
       let corners = getCornerIndices(path);
-      for (let i = 0; i < path.length - 1; i++) {
-        let a = points[path[i]], b = points[path[i+1]];
+      let cornerPath = getCornerPath(path);
+      for (let i = 0; i < cornerPath.length - 1; i++) {
+        let a = points[cornerPath[i]], b = points[cornerPath[i+1]];
         inkPaths.push(getLinePathData(tx(a.x), ty(a.y), tx(b.x), ty(b.y), thick));
-        if (corners.has(path[i])) {
+        if (corners.has(cornerPath[i])) {
           inkPaths.push(getCirclePathData(tx(a.x), ty(a.y), pathNodeRadius));
         }
-        if (corners.has(path[i+1])) {
+        if (corners.has(cornerPath[i+1])) {
           inkPaths.push(getCirclePathData(tx(b.x), ty(b.y), pathNodeRadius));
         }
       }
@@ -325,10 +356,14 @@ async function exportToSVG() {
   const inkMarkup = inkPaths.map(d => `<path d="${d}" fill="black" fill-rule="nonzero" />`).join("");
   const holesMarkup = holePaths.map(d => `<path d="${d}" fill="red" fill-rule="nonzero" />`).join("");
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalDim}px" height="${finalDim}px" viewBox="0 0 ${finalDim} ${finalDim}">
-    ${inkMarkup}
-    <g id="holes">
-      ${holesMarkup}
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalDim}px" height="${finalDim}px" viewBox="0 -${finalDim} ${finalDim} ${finalDim}">
+    <g transform="translate(50 -${finalDim})">
+      <g id="ink">
+        ${inkMarkup}
+      </g>
+      <g id="holes">
+        ${holesMarkup}
+      </g>
     </g>
   </svg>`;
 
