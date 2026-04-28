@@ -8,6 +8,7 @@ const DRAW_MODE_NORMAL = "normal";
 const DRAW_MODE_INVERTED = "inverted";
 const UI_MARGIN = 28;
 const UI_CONTROL_GAP = 18;
+const MODE_TOGGLE_HEIGHT = 42;
 const GRID_SPACING_DIVISOR_EXTRA = 10;
 const DISPLAY_SCALE = 1.5;
 
@@ -21,9 +22,7 @@ let currentPath = null;
 let fullPaths = [];
 let cellSpacing = 0;
 let pointSpacing = 0;
-let drawMode = DRAW_MODE_NORMAL;
-let modeToggleTrack;
-let modeToggleKnob;
+let drawMode = DRAW_MODE_INVERTED;
 let exportButton;
 let refreshButton;
 
@@ -42,32 +41,12 @@ function setDrawMode(mode) {
   if (mode === DRAW_MODE_NORMAL || mode === DRAW_MODE_INVERTED) drawMode = mode;
 }
 
-function toggleDrawMode() {
-  setDrawMode(drawMode === DRAW_MODE_NORMAL ? DRAW_MODE_INVERTED : DRAW_MODE_NORMAL);
-  updateModeToggleAppearance();
-}
-
-function updateModeToggleAppearance() {
-  if (!modeToggleTrack || !modeToggleKnob) return;
-  const isInverted = drawMode === DRAW_MODE_INVERTED;
-  modeToggleTrack.style("background", isInverted ? "#111" : "#fff");
-  modeToggleKnob.style("left", isInverted ? "39px" : "4px");
-  modeToggleKnob.style("background", isInverted ? "#fff" : "#000");
-}
-
-function positionModeToggle() { if (modeToggleTrack) modeToggleTrack.position(UI_MARGIN, UI_MARGIN); }
-function positionExportButton() { if (!exportButton) return; exportButton.position(UI_MARGIN, UI_MARGIN + (modeToggleTrack ? modeToggleTrack.size().height : 0) + UI_CONTROL_GAP); }
-function positionRefreshButton() { if (!refreshButton || !modeToggleTrack) return; refreshButton.position(windowWidth - refreshButton.size().width - UI_MARGIN, UI_MARGIN + (modeToggleTrack.size().height - refreshButton.size().height) / 2); }
+function positionExportButton() { if (!exportButton) return; exportButton.position(UI_MARGIN, UI_MARGIN); }
+function positionRefreshButton() { if (!refreshButton) return; refreshButton.position(windowWidth - refreshButton.size().width - UI_MARGIN, UI_MARGIN + (MODE_TOGGLE_HEIGHT - refreshButton.size().height) / 2); }
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
   createGrid();
-  
-  modeToggleTrack = createDiv("");
-  modeToggleTrack.mousePressed(toggleDrawMode);
-  modeToggleTrack.style("width", "80px").style("height", "42px").style("border", "1px solid #000").style("border-radius", "999px").style("cursor", "pointer").style("position", "absolute").style("box-sizing", "border-box");
-  
-  modeToggleKnob = createDiv("").parent(modeToggleTrack).style("width", "34px").style("height", "34px").style("border-radius", "50%").style("position", "absolute").style("top", "3px").style("transition", "left 120ms ease").style("pointer-events", "none");
 
   exportButton = createButton("export").mousePressed(exportToSVG);
   exportButton.style("font-family", "sans-serif").style("font-size", "34px").style("border", "none").style("background", "transparent").style("cursor", "pointer").style("color", "#000");
@@ -79,7 +58,7 @@ function setup() {
   refreshButton.mouseOver(() => refreshButton.style("color", "rgb(200, 200, 200)"));
   refreshButton.mouseOut(() => refreshButton.style("color", "#000"));
 
-  positionModeToggle(); positionExportButton(); positionRefreshButton(); updateModeToggleAppearance();
+  positionExportButton(); positionRefreshButton();
 }
 
 function draw() {
@@ -92,14 +71,13 @@ function draw() {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   resetGrid();
-  positionModeToggle(); positionExportButton(); positionRefreshButton();
+  positionExportButton(); positionRefreshButton();
 }
 
 function keyPressed() {
   if (key === 'r' || key === 'R') resetGrid();
   else if (key === 'e' || key === 'E') exportToSVG();
   else if (key === 'g' || key === 'G') exportGridToSVG();
-  else if (key === 'i' || key === 'I') toggleDrawMode();
 }
 
 function resetGrid() {
@@ -358,7 +336,7 @@ async function exportToSVG() {
   const holesMarkup = holePaths.map(d => `<path d="${d}" fill="red" fill-rule="nonzero" />`).join("");
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${finalDim}px" height="${finalDim}px" viewBox="0 -${finalDim} ${finalDim} ${finalDim}">
-    <g transform="translate(50 -${finalDim})">
+    <g transform="translate(0 -${finalDim})">
       <g id="ink">
         ${inkMarkup}
       </g>
