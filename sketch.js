@@ -98,6 +98,7 @@ function windowResized() {
 function keyPressed() {
   if (key === 'r' || key === 'R') resetGrid();
   else if (key === 'e' || key === 'E') exportToSVG();
+  else if (key === 'g' || key === 'G') exportGridToSVG();
   else if (key === 'i' || key === 'I') toggleDrawMode();
 }
 
@@ -371,5 +372,43 @@ async function exportToSVG() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url; link.download = `glyph.svg`; link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportGridToSVG() {
+  if (!points.length) return;
+
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  const targetTotalSize = 800;
+  const spanY = (maxY - minY);
+  const bleed = spanY > 0 ? (gridDotDiameter() / spanY) : 0;
+  const SCALE = targetTotalSize / (spanY * (1 + bleed));
+  const PADDING = (SCALE * gridDotDiameter()) / 2;
+
+  const tx = (v) => (v - minX) * SCALE + PADDING;
+  const ty = (v) => (v - minY) * SCALE + PADDING;
+  const ts = (v) => v * SCALE;
+
+  const r = Math.max(0.5, ts(gridDotDiameter() / 2));
+  const circlesMarkup = points
+    .map(p => `<circle cx="${Number(tx(p.x).toFixed(8))}" cy="${Number(ty(p.y).toFixed(8))}" r="${Number(r.toFixed(8))}" />`)
+    .join("");
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${targetTotalSize}px" height="${targetTotalSize}px" viewBox="0 0 ${targetTotalSize} ${targetTotalSize}">
+    <g fill="rgb(200, 200, 200)">
+      ${circlesMarkup}
+    </g>
+  </svg>`;
+
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `grid-${gridSize}x${gridSize}.svg`;
+  link.click();
   URL.revokeObjectURL(url);
 }
